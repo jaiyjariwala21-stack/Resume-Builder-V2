@@ -49,6 +49,26 @@ function toFirestoreDocument(profile) {
   };
 }
 
+function toFirestoreBillingHistoryDocument(entry) {
+  return {
+    fields: {
+      email: { stringValue: sanitize(entry.email).toLowerCase() },
+      kind: { stringValue: sanitize(entry.kind) },
+      status: { stringValue: sanitize(entry.status) },
+      planMode: { stringValue: sanitize(entry.planMode) },
+      amountMinor: { integerValue: String(Number(entry.amountMinor || 0)) },
+      currency: { stringValue: sanitize(entry.currency).toUpperCase() },
+      amountLabel: { stringValue: sanitize(entry.amountLabel) },
+      stripeCustomerId: { stringValue: sanitize(entry.stripeCustomerId) },
+      stripeSubscriptionId: { stringValue: sanitize(entry.stripeSubscriptionId) },
+      checkoutSessionId: { stringValue: sanitize(entry.checkoutSessionId) },
+      source: { stringValue: sanitize(entry.source) },
+      createdAt: { timestampValue: entry.createdAt || new Date().toISOString() },
+      updatedAt: { timestampValue: new Date().toISOString() },
+    },
+  };
+}
+
 function fromFirestoreDocument(document) {
   if (!document?.fields) {
     return null;
@@ -230,5 +250,32 @@ export async function consumeResumeCredit(email) {
     hasActiveSubscription: profile.has_active_subscription,
     resumeCredits: credits - 1,
     lastCheckoutSessionId: profile.last_checkout_session_id,
+  });
+}
+
+export async function upsertBillingHistoryEntry(entry) {
+  const safeId = sanitize(entry.id);
+  const safeEmail = sanitize(entry.email).toLowerCase();
+  if (!safeId || !safeEmail) {
+    throw new Error("id and email are required for billing history.");
+  }
+
+  await firestoreRequest(`/billingHistory/${encodeDocId(safeId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(toFirestoreBillingHistoryDocument({
+      id: safeId,
+      email: safeEmail,
+      kind: entry.kind,
+      status: entry.status,
+      planMode: entry.planMode,
+      amountMinor: entry.amountMinor,
+      currency: entry.currency,
+      amountLabel: entry.amountLabel,
+      stripeCustomerId: entry.stripeCustomerId,
+      stripeSubscriptionId: entry.stripeSubscriptionId,
+      checkoutSessionId: entry.checkoutSessionId,
+      source: entry.source,
+      createdAt: entry.createdAt,
+    })),
   });
 }

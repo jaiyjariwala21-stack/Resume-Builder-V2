@@ -1,7 +1,24 @@
+const FIREBASE_WEB_CONFIG = {
+  apiKey: "AIzaSyBlqsUErm4_xrDmDOa7esIsXJqxJdlEh3Q",
+  authDomain: "resume-builder-v2-c132b.firebaseapp.com",
+  projectId: "resume-builder-v2-c132b",
+  storageBucket: "resume-builder-v2-c132b.firebasestorage.app",
+  messagingSenderId: "814881794647",
+  appId: "1:814881794647:web:1d78caf85eb3c513c05112",
+  measurementId: "G-V2NGRRMV8K",
+};
+
 const state = {
   parsedJob: null,
   matchResult: null,
   accessStatus: null,
+  currentUser: null,
+  accountBusy: false,
+  firebaseReady: false,
+  firebaseFailed: false,
+  savedRecords: [],
+  billingHistory: [],
+  firebase: null,
 };
 
 const STOP_WORDS = new Set([
@@ -93,6 +110,16 @@ const elements = {
   refreshAccessBtn: document.getElementById("refreshAccessBtn"),
   manageBillingBtn: document.getElementById("manageBillingBtn"),
   accessStatus: document.getElementById("accessStatus"),
+  accountEmail: document.getElementById("accountEmail"),
+  accountPassword: document.getElementById("accountPassword"),
+  signUpBtn: document.getElementById("signUpBtn"),
+  signInBtn: document.getElementById("signInBtn"),
+  signOutBtn: document.getElementById("signOutBtn"),
+  saveResumeBtn: document.getElementById("saveResumeBtn"),
+  saveOutputBtn: document.getElementById("saveOutputBtn"),
+  accountStatus: document.getElementById("accountStatus"),
+  savedResumes: document.getElementById("savedResumes"),
+  billingHistory: document.getElementById("billingHistory"),
   analyzeBtn: document.getElementById("analyzeBtn"),
   generateBtn: document.getElementById("generateBtn"),
   matchScore: document.getElementById("matchScore"),
@@ -125,13 +152,27 @@ elements.buySingleBtn.addEventListener("click", () => startCheckout("single"));
 elements.buyMonthlyBtn.addEventListener("click", () => startCheckout("subscription"));
 elements.refreshAccessBtn.addEventListener("click", loadAccessStatus);
 elements.manageBillingBtn.addEventListener("click", openBillingPortal);
+elements.signUpBtn.addEventListener("click", handleSignUp);
+elements.signInBtn.addEventListener("click", handleSignIn);
+elements.signOutBtn.addEventListener("click", handleSignOut);
+elements.saveResumeBtn.addEventListener("click", () => saveWorkspaceRecord("resume"));
+elements.saveOutputBtn.addEventListener("click", () => saveWorkspaceRecord("draft"));
 elements.downloadResumeBtn.addEventListener("click", () => exportPdf("resume"));
 elements.downloadCoverBtn.addEventListener("click", () => exportPdf("cover"));
 elements.tabs.forEach((tab) => tab.addEventListener("click", () => setActiveTab(tab.dataset.tab)));
+
+renderSavedRecords();
+renderBillingHistory();
+renderAccountState();
 bootstrapBillingState();
+initOptionalAccount();
 
 function setStatus(message) {
   elements.statusMessage.textContent = message;
+}
+
+function setAccountStatus(message) {
+  elements.accountStatus.textContent = message;
 }
 
 async function bootstrapBillingState() {
@@ -153,6 +194,466 @@ async function bootstrapBillingState() {
   await loadAccessStatus();
 }
 
+async function initOptionalAccount() {
+  setAccountStatus("Loading optional account tools...");
+
+  try {
+    const [
+      appModule,
+      authModule,
+      firestoreModule,
+    ] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"),
+      import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"),
+    ]);
+
+    const app = appModule.initializeApp(FIREBASE_WEB_CONFIG);
+    const auth = authModule.getAuth(app);
+    const db = firestoreModule.getFirestore(app);
+
+    state.firebase = {
+      auth,
+      db,
+      createUserWithEmailAndPassword: authModule.createUserWithEmailAndPassword,
+      signInWithEmailAndPassword: authModule.signInWithEmailAndPassword,
+      signOut: authModule.signOut,
+      onAuthStateChanged: authModule.onAuthStateChanged,
+      doc: firestoreModule.doc,
+      setDoc: firestoreModule.setDoc,
+      addDoc: firestoreModule.addDoc,
+      getDocs: firestoreModule.getDocs,
+      collection: firestoreModule.collection,
+      query: firestoreModule.query,
+      where: firestoreModule.where,
+      serverTimestamp: firestoreModule.serverTimestamp,
+    };
+
+    state.firebaseReady = true;
+    state.firebase.onAuthStateChanged(auth, async (user) => {
+      state.currentUser = user || null;
+      renderAccountState();
+
+      if (!user) {
+        state.savedRecords = [];
+        state.billingHistory = [];
+        renderSavedRecords();
+        renderBillingHistory();
+        return;
+      }
+
+      if (!sanitizeText(elements.billingEmail.value)) {
+        elements.billingEmail.value = user.email || "";
+      }
+      elements.accountEmail.value = user.email || "";
+      await Promise.all([loadSavedRecords(), loadBillingHistory()]);
+    });
+  } catch (error) {
+    console.error(error);
+    state.firebaseFailed = true;
+    setAccountStatus("Optional account tools could not load. Guest mode and billing still work.");
+    renderAccountState();
+  }
+}
+
+function renderAccountState() {
+  const signedIn = Boolean(state.currentUser);
+  elements.signOutBtn.disabled = state.accountBusy || !signedIn;
+  elements.saveResumeBtn.disabled = state.accountBusy || !signedIn;
+  elements.saveOutputBtn.disabled = state.accountBusy || !signedIn;
+
+  if (state.firebaseFailed) {
+    elements.signUpBtn.disabled = true;
+    elements.signInBtn.disabled = true;
+    return;
+  }
+
+  if (!state.firebaseReady) {
+    elements.signUpBtn.disabled = true;
+    elements.signInBtn.disabled = true;
+    return;
+  }
+
+  elements.signUpBtn.disabled = state.accountBusy || signedIn;
+  elements.signInBtn.disabled = state.accountBusy || signedIn;
+
+  if (signedIn) {
+    const email = state.currentUser.email || "account user";
+    setAccountStatus(`Signed in as ${email}. You can now save resumes, drafts, and review billing history.`);
+    return;
+  }
+
+  setAccountStatus(
+    state.firebaseReady
+      ? "Guest mode active. Sign in only if you want saved history."
+      : "Loading optional account tools...",
+  );
+}
+
+function sanitizeText(input) {
+  return String(input || "")
+    .replace(/\u0000/g, "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+}
+
+async function ensureFirebaseClient() {
+  if (state.firebaseReady && state.firebase) {
+    return state.firebase;
+  }
+
+  if (state.firebaseFailed) {
+    throw new Error("Firebase account tools are unavailable right now.");
+  }
+
+  throw new Error("Firebase account tools are still loading. Try again in a moment.");
+}
+
+async function handleSignUp() {
+  const firebase = await ensureFirebaseClient().catch((error) => {
+    setStatus(error.message);
+    throw error;
+  });
+  const email = sanitizeText(elements.accountEmail.value).toLowerCase();
+  const password = sanitizeText(elements.accountPassword.value);
+
+  if (!email || !password) {
+    setStatus("Enter an account email and password first.");
+    return;
+  }
+
+  toggleAccountBusy(true);
+  setStatus("Creating your account...");
+
+  try {
+    const credential = await firebase.createUserWithEmailAndPassword(firebase.auth, email, password);
+    await firebase.setDoc(firebase.doc(firebase.db, "users", credential.user.uid), {
+      email,
+      createdAt: firebase.serverTimestamp(),
+      updatedAt: firebase.serverTimestamp(),
+    }, { merge: true });
+    elements.billingEmail.value = email;
+    setStatus("Account created. You can now save resumes and drafts.");
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "Unable to create account.");
+  } finally {
+    toggleAccountBusy(false);
+  }
+}
+
+async function handleSignIn() {
+  const firebase = await ensureFirebaseClient().catch((error) => {
+    setStatus(error.message);
+    throw error;
+  });
+  const email = sanitizeText(elements.accountEmail.value).toLowerCase();
+  const password = sanitizeText(elements.accountPassword.value);
+
+  if (!email || !password) {
+    setStatus("Enter your account email and password first.");
+    return;
+  }
+
+  toggleAccountBusy(true);
+  setStatus("Signing you in...");
+
+  try {
+    await firebase.signInWithEmailAndPassword(firebase.auth, email, password);
+    elements.billingEmail.value = email;
+    setStatus("Signed in successfully.");
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "Unable to sign in.");
+  } finally {
+    toggleAccountBusy(false);
+  }
+}
+
+async function handleSignOut() {
+  const firebase = await ensureFirebaseClient().catch((error) => {
+    setStatus(error.message);
+    throw error;
+  });
+
+  toggleAccountBusy(true);
+  setStatus("Signing out...");
+
+  try {
+    await firebase.signOut(firebase.auth);
+    elements.accountPassword.value = "";
+    setStatus("Signed out. Guest mode is still available.");
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "Unable to sign out.");
+  } finally {
+    toggleAccountBusy(false);
+  }
+}
+
+async function saveWorkspaceRecord(recordType) {
+  const firebase = await ensureFirebaseClient().catch((error) => {
+    setStatus(error.message);
+    throw error;
+  });
+  const user = state.currentUser;
+  if (!user) {
+    setStatus("Sign in first if you want to save resumes or generated drafts.");
+    return;
+  }
+
+  const resumeText = sanitizeText(elements.resumeText.value);
+  const resumeOutput = sanitizeText(elements.resumeOutput.value);
+  const coverLetterOutput = sanitizeText(elements.coverLetterOutput.value);
+
+  if (recordType === "resume" && !resumeText) {
+    setStatus("Add resume text before saving a resume snapshot.");
+    return;
+  }
+
+  if (recordType === "draft" && !resumeOutput && !coverLetterOutput) {
+    setStatus("Generate content first, then save the draft.");
+    return;
+  }
+
+  toggleAccountBusy(true);
+  setStatus(recordType === "resume" ? "Saving resume snapshot..." : "Saving generated draft...");
+
+  const titleSource = recordType === "resume" ? resumeText : resumeOutput || coverLetterOutput;
+  const title = inferRecordTitle(titleSource, recordType);
+
+  try {
+    await firebase.addDoc(firebase.collection(firebase.db, "savedResumes"), {
+      ownerUid: user.uid,
+      ownerEmail: user.email || "",
+      recordType,
+      title,
+      resumeText,
+      summary: sanitizeText(elements.summaryField.value),
+      experience: sanitizeText(elements.experienceField.value),
+      skills: sanitizeText(elements.skillsField.value),
+      education: sanitizeText(elements.educationField.value),
+      jobDescription: sanitizeText(elements.jobDescription.value),
+      parsedJobTitle: sanitizeText(state.parsedJob?.title),
+      parsedJobCompany: sanitizeText(state.parsedJob?.company),
+      generatedResume: resumeOutput,
+      generatedCoverLetter: coverLetterOutput,
+      createdAt: firebase.serverTimestamp(),
+      updatedAt: firebase.serverTimestamp(),
+    });
+
+    await loadSavedRecords();
+    setStatus(recordType === "resume" ? "Resume snapshot saved." : "Generated draft saved.");
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "Unable to save this record.");
+  } finally {
+    toggleAccountBusy(false);
+  }
+}
+
+function inferRecordTitle(text, recordType) {
+  const firstLine = sanitizeText(text).split("\n").find(Boolean) || "";
+  if (firstLine) {
+    return firstLine.slice(0, 72);
+  }
+  return recordType === "resume" ? "Resume snapshot" : "Generated draft";
+}
+
+async function loadSavedRecords() {
+  const firebase = await ensureFirebaseClient();
+  const user = state.currentUser;
+  if (!user) {
+    state.savedRecords = [];
+    renderSavedRecords();
+    return;
+  }
+
+  try {
+    const snapshot = await firebase.getDocs(
+      firebase.query(
+        firebase.collection(firebase.db, "savedResumes"),
+        firebase.where("ownerUid", "==", user.uid),
+      ),
+    );
+
+    state.savedRecords = snapshot.docs
+      .map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }))
+      .sort((left, right) => getComparableTime(right.updatedAt || right.createdAt) - getComparableTime(left.updatedAt || left.createdAt));
+    renderSavedRecords();
+  } catch (error) {
+    console.error(error);
+    elements.savedResumes.textContent = "Could not load saved resumes yet. Check your Firestore rules.";
+  }
+}
+
+async function loadBillingHistory() {
+  const firebase = await ensureFirebaseClient();
+  const user = state.currentUser;
+  if (!user?.email) {
+    state.billingHistory = [];
+    renderBillingHistory();
+    return;
+  }
+
+  try {
+    const snapshot = await firebase.getDocs(
+      firebase.query(
+        firebase.collection(firebase.db, "billingHistory"),
+        firebase.where("email", "==", user.email.toLowerCase()),
+      ),
+    );
+
+    state.billingHistory = snapshot.docs
+      .map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }))
+      .sort((left, right) => getComparableTime(right.createdAt) - getComparableTime(left.createdAt));
+    renderBillingHistory();
+  } catch (error) {
+    console.error(error);
+    elements.billingHistory.textContent = "Could not load billing history yet. Check your Firestore rules.";
+  }
+}
+
+function renderSavedRecords() {
+  elements.savedResumes.innerHTML = "";
+
+  if (!state.currentUser) {
+    elements.savedResumes.textContent = "Sign in to save and load resume versions.";
+    return;
+  }
+
+  if (!state.savedRecords.length) {
+    elements.savedResumes.textContent = "No saved resumes yet. Save a resume snapshot or generated draft to build your library.";
+    return;
+  }
+
+  state.savedRecords.forEach((record) => {
+    const card = document.createElement("article");
+    card.className = "saved-card";
+
+    const heading = document.createElement("h4");
+    heading.textContent = `${record.recordType === "draft" ? "Draft" : "Resume"} · ${record.title || "Untitled"}`;
+
+    const meta = document.createElement("p");
+    meta.textContent = `${record.parsedJobTitle || "General"} · ${formatDisplayDate(record.updatedAt || record.createdAt)}`;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost-button";
+    button.textContent = "Load";
+    button.addEventListener("click", () => loadSavedRecordIntoEditor(record));
+
+    card.append(heading, meta, button);
+    elements.savedResumes.append(card);
+  });
+}
+
+function renderBillingHistory() {
+  elements.billingHistory.innerHTML = "";
+
+  if (!state.currentUser) {
+    elements.billingHistory.textContent = "Sign in with the same billing email to see payment history.";
+    return;
+  }
+
+  if (!state.billingHistory.length) {
+    elements.billingHistory.textContent = "No billing history found yet for this signed-in email.";
+    return;
+  }
+
+  state.billingHistory.forEach((entry) => {
+    const card = document.createElement("article");
+    card.className = "saved-card";
+
+    const heading = document.createElement("h4");
+    heading.textContent = formatBillingKind(entry.kind, entry.planMode);
+
+    const meta = document.createElement("p");
+    const amount = sanitizeText(entry.amountLabel) || "Amount pending";
+    meta.textContent = `${amount} · ${sanitizeText(entry.status || "recorded")} · ${formatDisplayDate(entry.createdAt)}`;
+
+    card.append(heading, meta);
+    elements.billingHistory.append(card);
+  });
+}
+
+function loadSavedRecordIntoEditor(record) {
+  elements.resumeText.value = sanitizeText(record.resumeText);
+  elements.summaryField.value = sanitizeText(record.summary);
+  elements.experienceField.value = sanitizeText(record.experience);
+  elements.skillsField.value = sanitizeText(record.skills);
+  elements.educationField.value = sanitizeText(record.education);
+  elements.jobDescription.value = sanitizeText(record.jobDescription);
+  elements.resumeOutput.value = sanitizeText(record.generatedResume);
+  elements.coverLetterOutput.value = sanitizeText(record.generatedCoverLetter);
+
+  if (!elements.summaryField.value || !elements.experienceField.value) {
+    populateStructuredFields(elements.resumeText.value);
+  }
+
+  if (elements.resumeOutput.value || elements.coverLetterOutput.value) {
+    setActiveTab(elements.resumeOutput.value ? "resumeOutput" : "coverLetterOutput");
+  }
+
+  state.parsedJob = null;
+  state.matchResult = null;
+  setStatus(`Loaded "${record.title || "saved record"}" into the editor.`);
+}
+
+function getComparableTime(value) {
+  if (!value) {
+    return 0;
+  }
+
+  if (typeof value?.toDate === "function") {
+    return value.toDate().getTime();
+  }
+
+  if (typeof value?.seconds === "number") {
+    return value.seconds * 1000;
+  }
+
+  const parsed = Date.parse(String(value));
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function formatDisplayDate(value) {
+  const comparable = getComparableTime(value);
+  if (!comparable) {
+    return "recently";
+  }
+
+  return new Intl.DateTimeFormat("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(comparable));
+}
+
+function formatBillingKind(kind, planMode) {
+  if (kind === "subscription_checkout") {
+    return "Subscription started";
+  }
+  if (kind === "single_checkout") {
+    return "Single resume purchase";
+  }
+  if (kind === "invoice_paid") {
+    return "Subscription renewal paid";
+  }
+  if (kind === "subscription_status") {
+    return `Subscription status updated${planMode ? ` (${planMode})` : ""}`;
+  }
+  if (kind === "refund") {
+    return "Refund processed";
+  }
+  return "Billing event";
+}
+
 async function finalizeCheckout(sessionId) {
   try {
     setStatus("Finalizing your paid access...");
@@ -166,6 +667,9 @@ async function finalizeCheckout(sessionId) {
       throw new Error(payload.error || "Unable to finalize checkout.");
     }
     setStatus(payload.message || "Paid access activated.");
+    if (state.currentUser) {
+      await loadBillingHistory();
+    }
   } catch (error) {
     console.error(error);
     setStatus(error.message || "Unable to finalize checkout.");
@@ -242,13 +746,6 @@ async function openBillingPortal() {
     setStatus(error.message || "Unable to open billing portal.");
     toggleBillingBusy(false);
   }
-}
-
-function sanitizeText(input) {
-  return String(input || "")
-    .replace(/\u0000/g, "")
-    .replace(/\r\n/g, "\n")
-    .trim();
 }
 
 function loadSampleData() {
@@ -721,4 +1218,9 @@ function toggleBillingBusy(isBusy) {
   [elements.buySingleBtn, elements.buyMonthlyBtn, elements.refreshAccessBtn, elements.manageBillingBtn].forEach((button) => {
     button.disabled = isBusy;
   });
+}
+
+function toggleAccountBusy(isBusy) {
+  state.accountBusy = isBusy;
+  renderAccountState();
 }

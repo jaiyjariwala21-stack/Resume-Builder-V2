@@ -194,9 +194,34 @@
           <div id="accessStatus" class="meta-box muted">No paid session detected yet.</div>
         </section>
 
+        <section class="panel">
+          <div class="panel-header">
+            <h2>5. Optional Account</h2>
+            <p>Create an account to save resumes, generated drafts, and view billing history later.</p>
+          </div>
+          <label class="field">
+            <span>Email</span>
+            <input id="accountEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input id="accountPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters" />
+          </label>
+          <div class="action-row">
+            <button id="signUpBtn" class="secondary-button" type="button">Create account</button>
+            <button id="signInBtn" class="ghost-button" type="button">Sign in</button>
+            <button id="signOutBtn" class="ghost-button" type="button">Sign out</button>
+          </div>
+          <div class="action-row">
+            <button id="saveResumeBtn" class="secondary-button" type="button">Save current resume</button>
+            <button id="saveOutputBtn" class="ghost-button" type="button">Save generated draft</button>
+          </div>
+          <div id="accountStatus" class="meta-box muted">Guest mode active. Sign in only if you want saved history.</div>
+        </section>
+
         <section class="panel score-panel">
           <div class="panel-header">
-            <h2>5. Match Score Panel</h2>
+            <h2>6. Match Score Panel</h2>
             <p>Keyword overlap, missing terms, and quick ATS guidance.</p>
           </div>
           <div class="score-card">
@@ -225,7 +250,7 @@
 
         <section class="panel output-panel">
           <div class="panel-header">
-            <h2>6. Output</h2>
+            <h2>7. Output</h2>
             <p>Review, edit, and export your tailored resume or cover letter.</p>
           </div>
           <div class="tabs" role="tablist" aria-label="Generated outputs">
@@ -237,6 +262,23 @@
           <div class="action-row">
             <button id="downloadResumeBtn" class="ghost-button" type="button">Download Resume PDF</button>
             <button id="downloadCoverBtn" class="ghost-button" type="button">Download Cover Letter PDF</button>
+          </div>
+        </section>
+
+        <section class="panel library-panel">
+          <div class="panel-header">
+            <h2>8. Saved Workspace</h2>
+            <p>Your account can keep resumes, generated drafts, and recent billing activity.</p>
+          </div>
+          <div class="library-grid">
+            <div>
+              <h3>Saved Resumes</h3>
+              <div id="savedResumes" class="saved-list muted">Sign in to save and load resume versions.</div>
+            </div>
+            <div>
+              <h3>Billing History</h3>
+              <div id="billingHistory" class="saved-list muted">Sign in with the same billing email to see payment history.</div>
+            </div>
           </div>
         </section>
       </main>

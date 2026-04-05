@@ -1,7 +1,19 @@
 import { buildSessionCookie, createSignedSession } from "./lib/app-session.js";
 import { json, DEFAULT_HEADERS, parseJsonBody, sanitize } from "./lib/http.js";
-import { upsertBillingProfile } from "./lib/firebase-firestore.js";
+import { upsertBillingHistoryEntry, upsertBillingProfile } from "./lib/firebase-firestore.js";
 import { stripeRequest } from "./lib/stripe-api.js";
+
+function formatAmountLabel(amountMinor, currency) {
+  const safeCurrency = sanitize(currency || "USD").toUpperCase();
+  try {
+    return new Intl.NumberFormat("en-CA", {
+      style: "currency",
+      currency: safeCurrency,
+    }).format(Number(amountMinor || 0) / 100);
+  } catch {
+    return `${safeCurrency} ${(Number(amountMinor || 0) / 100).toFixed(2)}`;
+  }
+}
 
 export async function handler(event) {
   if (event.httpMethod === "OPTIONS") {
@@ -40,6 +52,21 @@ export async function handler(event) {
       hasActiveSubscription: isSubscription,
       resumeCredits: isSubscription ? 0 : 1,
       lastCheckoutSessionId: session.id,
+    });
+
+    await upsertBillingHistoryEntry({
+      id: `checkout_${session.id}`,
+      email: customerEmail,
+      kind: isSubscription ? "subscription_checkout" : "single_checkout",
+      status: "paid",
+      planMode: isSubscription ? "subscription" : "single",
+      amountMinor: Number(session.amount_total || 0),
+      currency: sanitize(session.currency || "USD"),
+      amountLabel: formatAmountLabel(session.amount_total, session.currency),
+      stripeCustomerId: sanitize(session.customer),
+      stripeSubscriptionId: isSubscription ? sanitize(session.subscription) : "",
+      checkoutSessionId: sanitize(session.id),
+      source: "finalize-access",
     });
 
     const token = createSignedSession({

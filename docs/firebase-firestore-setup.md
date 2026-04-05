@@ -3,8 +3,9 @@
 This project is designed to use Firebase's free tier in a storage-only role:
 
 - Netlify Functions handle billing and generation
-- Firestore stores billing state
+- Firestore stores billing state, billing history, and optional saved user content
 - Stripe handles payments
+- Firebase Auth handles optional sign-in for saved resumes and history
 
 ## Why this design
 
@@ -22,13 +23,19 @@ FIREBASE_PRIVATE_KEY=
 
 Use a Firebase service account with Firestore access. Store the private key exactly as an environment variable and preserve line breaks as `\n`.
 
-## Firestore collection
+## Firestore collections
 
-Create a collection named:
+The server-side billing layer uses:
 
-`billingProfiles`
+- `billingProfiles`
+- `billingHistory`
 
-Each document id is the lowercased customer email. Example:
+The optional account layer uses:
+
+- `users`
+- `savedResumes`
+
+Each `billingProfiles` document id is the lowercased customer email. Example:
 
 `billingProfiles/user@example.com`
 
@@ -49,7 +56,7 @@ Each document id is the lowercased customer email. Example:
 
 ## Suggested Firestore rules
 
-If only Netlify Functions write billing data with a service account, you can keep client access locked down entirely:
+If you want optional client-side accounts for saved resumes and billing history, use rules shaped like this:
 
 ```text
 rules_version = '2';
@@ -58,9 +65,28 @@ service cloud.firestore {
     match /billingProfiles/{document=**} {
       allow read, write: if false;
     }
+
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /savedResumes/{documentId} {
+      allow create: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow read, update, delete: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /billingHistory/{documentId} {
+      allow read: if request.auth != null
+        && resource.data.email == request.auth.token.email;
+      allow write: if false;
+    }
   }
 }
 ```
+
+If you do not want optional accounts yet, you can keep client access locked down entirely and let only Netlify Functions write billing data with the service account.
 
 ## Free-tier planning
 

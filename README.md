@@ -1,8 +1,8 @@
 # Job Machine
 
-Job Machine is a stateless web app for tailoring a resume to a specific job description using the user's own API key. It combines browser-side resume parsing, lightweight ATS-style matching, and serverless multi-provider AI generation in a Netlify-friendly deployment model.
+Job Machine is a stateless web app for tailoring a resume to a specific job description using the user's own API key. It combines browser-side resume parsing, lightweight ATS-style matching, serverless multi-provider AI generation, and an optional Firebase-backed account mode in a Netlify-friendly deployment model.
 
-The app is designed for a V1 launch with no database, no user accounts, and no persistent storage of personal data or API keys. A user can upload a PDF or DOCX resume, paste or scrape a job description, choose an LLM provider, generate a tailored resume and cover letter, edit the results inline, and export the final documents as PDFs.
+The app still supports guest mode with no mandatory signup. Users can upload a PDF or DOCX resume, paste or scrape a job description, choose an LLM provider, generate a tailored resume and cover letter, edit the results inline, and export the final documents as PDFs. If they choose to create an account, they can also save resumes, generated drafts, and view billing history tied to their email.
 
 ## Why This Project Exists
 
@@ -19,6 +19,7 @@ Job Machine is intended to be a privacy-first alternative for people who already
 - no backend infrastructure beyond Netlify Functions
 - no API key storage
 - no mandatory signup
+- optional account-based saved history
 - support for OpenAI, Anthropic, and Google Gemini
 
 ## Product Goals
@@ -103,6 +104,16 @@ The prompt explicitly instructs the model:
 The generated resume and cover letter are shown in editable textareas. Users can modify them before exporting.
 
 Export is handled in the browser using `jsPDF`.
+
+### Optional account mode
+
+Users can optionally create an account with Firebase Auth. When signed in, they can:
+
+- save resume snapshots
+- save generated drafts
+- view billing history that matches their signed-in email
+
+Guest mode remains available, and paid generation continues to rely on server-side billing checks plus provider secrets stored in Netlify environment variables.
 
 ## Tech Stack
 
