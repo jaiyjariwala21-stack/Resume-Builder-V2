@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Job Machine | AI Resume Builder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Source+Sans+3:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.js"></script>
+    <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Stateless AI Resume Builder</p>
+          <h1>Tailor your resume to a job without handing over your data.</h1>
+          <p class="hero-copy">
+            Upload a resume, paste a role, pick your model provider, and generate an ATS-aware
+            resume plus cover letter in one flow.
+          </p>
+        </div>
+        <div class="hero-card">
+          <div class="hero-stat">
+            <span>Providers</span>
+            <strong>OpenAI, Anthropic, Google</strong>
+          </div>
+          <div class="hero-stat">
+            <span>Privacy</span>
+            <strong>No API key storage</strong>
+          </div>
+          <div class="hero-stat">
+            <span>Output</span>
+            <strong>Resume + cover letter + match insights</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="app-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>1. Job Input</h2>
+            <p>Paste a job link or description. We’ll try scraping first, then fall back gracefully.</p>
+          </div>
+          <div class="action-row utility-row">
+            <button id="loadSampleBtn" class="ghost-button" type="button">Load sample data</button>
+            <button id="clearAllBtn" class="ghost-button" type="button">Clear all</button>
+          </div>
+          <label class="field">
+            <span>Job URL</span>
+            <div class="inline-field">
+              <input id="jobUrl" type="url" placeholder="https://company.com/jobs/product-manager" />
+              <button id="scrapeJobBtn" class="secondary-button" type="button">Fetch job</button>
+            </div>
+          </label>
+          <label class="field">
+            <span>Job Description</span>
+            <textarea
+              id="jobDescription"
+              rows="14"
+              placeholder="Paste the role description here if scraping is blocked."
+            ></textarea>
+          </label>
+          <div id="jobMeta" class="meta-box muted">No structured job summary yet.</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>2. Resume Input & Editor</h2>
+            <p>Upload a PDF or DOCX, or paste your resume manually and edit inline.</p>
+          </div>
+          <label class="field">
+            <span>Upload resume</span>
+            <input id="resumeFile" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+          </label>
+          <label class="field">
+            <span>Resume Text</span>
+            <textarea
+              id="resumeText"
+              rows="18"
+              placeholder="Paste your current resume text here."
+            ></textarea>
+          </label>
+
+          <div class="editor-grid">
+            <label class="field">
+              <span>Summary</span>
+              <textarea id="summaryField" rows="5" placeholder="Professional summary"></textarea>
+            </label>
+            <label class="field">
+              <span>Experience</span>
+              <textarea id="experienceField" rows="8" placeholder="Experience bullets"></textarea>
+            </label>
+            <label class="field">
+              <span>Skills</span>
+              <textarea id="skillsField" rows="5" placeholder="Skills, tools, technologies"></textarea>
+            </label>
+            <label class="field">
+              <span>Education</span>
+              <textarea id="educationField" rows="5" placeholder="Education and certifications"></textarea>
+            </label>
+          </div>
+          <button id="syncResumeBtn" class="ghost-button" type="button">Rebuild resume text from sections</button>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>3. AI Settings</h2>
+            <p>Keys are used only for the current request and never persisted.</p>
+          </div>
+          <label class="field">
+            <span>Provider</span>
+            <select id="provider">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="google">Google Gemini</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>API Key</span>
+            <input id="apiKey" type="password" autocomplete="off" placeholder="Paste your provider key for this session only" />
+          </label>
+          <div class="action-row">
+            <button id="analyzeBtn" class="secondary-button" type="button">Analyze match</button>
+            <button id="generateBtn" class="primary-button" type="button">Generate documents</button>
+          </div>
+        </section>
+
+        <section class="panel score-panel">
+          <div class="panel-header">
+            <h2>4. Match Score Panel</h2>
+            <p>Keyword overlap, missing terms, and quick ATS guidance.</p>
+          </div>
+          <div class="score-card">
+            <div class="score-ring">
+              <span id="matchScore">0</span>
+              <small>% Match</small>
+            </div>
+            <div class="score-details">
+              <div>
+                <h3>Overlapping Skills</h3>
+                <p id="overlapSkills" class="pill-list muted">Run analysis to see matches.</p>
+              </div>
+              <div>
+                <h3>Keyword Gaps</h3>
+                <p id="missingKeywords" class="pill-list muted">Missing keywords will appear here.</p>
+              </div>
+              <div>
+                <h3>Suggested Improvements</h3>
+                <p id="improvements" class="muted">
+                  Add measurable alignment, mirror relevant job language, and emphasize matching tools.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel output-panel">
+          <div class="panel-header">
+            <h2>5. Output</h2>
+            <p>Review, edit, and export your tailored resume or cover letter.</p>
+          </div>
+          <div class="tabs" role="tablist" aria-label="Generated outputs">
+            <button class="tab active" type="button" data-tab="resumeOutput">Resume</button>
+            <button class="tab" type="button" data-tab="coverLetterOutput">Cover Letter</button>
+          </div>
+          <textarea id="resumeOutput" class="output-area" rows="18" placeholder="Generated resume appears here."></textarea>
+          <textarea id="coverLetterOutput" class="output-area hidden" rows="18" placeholder="Generated cover letter appears here."></textarea>
+          <div class="action-row">
+            <button id="downloadResumeBtn" class="ghost-button" type="button">Download Resume PDF</button>
+            <button id="downloadCoverBtn" class="ghost-button" type="button">Download Cover Letter PDF</button>
+          </div>
+        </section>
+      </main>
+
+      <footer class="status-bar">
+        <p id="statusMessage">Ready.</p>
+      </footer>
+    </div>
+
+    <script type="module" src="./script.js"></script>
+  </body>
+</html>
