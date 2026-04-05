@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://job-machine.example.com/sitemap.xml
+Sitemap: https://resume-builder-v2-jaiyjariwala21.netlify.app/sitemap.xml

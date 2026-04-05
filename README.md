@@ -467,7 +467,7 @@ The app now includes basic SEO setup:
 - `robots.txt`
 - `sitemap.xml`
 
-Before launch, replace the placeholder domain `https://job-machine.example.com/` in:
+Before launch, replace the placeholder domain in:
 
 - [index.html](/Users/jay/Downloads/Resume builder/index.html)
 - [robots.txt](/Users/jay/Downloads/Resume builder/robots.txt)
