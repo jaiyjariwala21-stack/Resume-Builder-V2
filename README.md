@@ -131,14 +131,22 @@ Export is handled in the browser using `jsPDF`.
 ```text
 .
 ├── README.md
+├── .env.example
 ├── index.html
 ├── styles.css
 ├── script.js
 ├── package.json
 ├── .gitignore
 ├── netlify.toml
+├── robots.txt
+├── sitemap.xml
+├── docs
+│   └── monetization-plan.md
+├── scripts
+│   └── run-ats-samples.js
 └── netlify
     └── functions
+        ├── create-checkout-session.js
         ├── generate-docs.js
         ├── parse-job.js
         └── scrape-job.js
@@ -182,12 +190,14 @@ Holds the entire browser-side application flow:
 - section extraction
 - keyword extraction
 - local match-scoring logic
+- ATS-oriented keyword and phrase coverage scoring
 - job scraping request
 - job parsing request
 - multi-provider document generation request
 - PDF export
 - tab switching
 - status messaging
+- sample-data loading for demo/testing
 
 ### `netlify/functions/scrape-job.js`
 
@@ -230,6 +240,7 @@ Responsible for:
 - routing the request to the chosen provider
 - prompting for a tailored resume and cover letter
 - enforcing factuality constraints in the prompt
+- supporting either a user-supplied provider key or a server-side environment key
 - returning normalized JSON output
 
 The expected result is:
@@ -249,6 +260,35 @@ Configures:
 - functions directory
 - function bundling
 - a redirect so `/api/*` can route to Netlify Functions if desired
+
+### `netlify/functions/create-checkout-session.js`
+
+Provides a starter Stripe Checkout session endpoint for:
+
+- one-time pay-per-resume purchases
+- monthly subscriptions
+
+This is a scaffold, not a complete production billing system. Real monetization still requires persistent entitlement storage and webhook handling.
+
+### `.env.example`
+
+Documents the environment variables needed for:
+
+- provider API keys
+- Stripe billing
+- production app URL
+
+### `robots.txt` and `sitemap.xml`
+
+Provide the baseline files needed for search engine discovery and indexing.
+
+### `docs/monetization-plan.md`
+
+Explains the recommended architecture for using your own API keys safely and monetizing the app with a real billing stack.
+
+### `scripts/run-ats-samples.js`
+
+Generates three sample resumes and scores them with the same ATS-style heuristic used by the app so you can quickly demo or regression-test scoring changes.
 
 ### `package.json`
 
@@ -300,6 +340,7 @@ This project is intentionally conservative about sensitive data.
 - keys are not stored in local storage
 - keys are not persisted server-side
 - functions are written to avoid logging sensitive request data
+- server-managed provider keys can be stored in environment variables instead of being passed from the browser
 
 ### Scraping safety
 
@@ -359,6 +400,78 @@ For production use, you should periodically verify:
 - authentication format
 - JSON output support
 - token limits
+
+## Owner-Managed API Keys
+
+The app now supports two usage patterns:
+
+### User-managed key mode
+
+The end user pastes their own provider key into the form for the current request only.
+
+### Owner-managed key mode
+
+You configure one or more of these environment variables in Netlify:
+
+```bash
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GOOGLE_API_KEY=...
+```
+
+In that mode:
+
+- the browser can leave the API key field blank
+- your function uses the server-side key
+- the secret never needs to be exposed to the client
+
+This is the correct pattern for a paid SaaS product.
+
+## Monetization
+
+This repository now includes a starter Stripe Checkout function:
+
+- [create-checkout-session.js](/Users/jay/Downloads/Resume builder/netlify/functions/create-checkout-session.js)
+
+You can configure these variables:
+
+```bash
+STRIPE_SECRET_KEY=...
+STRIPE_PRICE_ID_SINGLE_RESUME=...
+STRIPE_PRICE_ID_MONTHLY=...
+APP_URL=https://your-production-domain.com
+```
+
+### Important limitation
+
+This starter billing flow is not enough by itself to enforce paid access securely at scale. Before charging real customers, you should add:
+
+- user accounts or magic-link login
+- webhook processing
+- persistent entitlement storage
+- request gating based on credits or subscription state
+- rate limiting and abuse monitoring
+
+For the recommended production design, see:
+
+- [monetization-plan.md](/Users/jay/Downloads/Resume builder/docs/monetization-plan.md)
+
+## SEO Baseline
+
+The app now includes basic SEO setup:
+
+- page title and meta description
+- Open Graph and Twitter tags
+- canonical URL placeholder
+- SoftwareApplication schema markup
+- `robots.txt`
+- `sitemap.xml`
+
+Before launch, replace the placeholder domain `https://job-machine.example.com/` in:
+
+- [index.html](/Users/jay/Downloads/Resume builder/index.html)
+- [robots.txt](/Users/jay/Downloads/Resume builder/robots.txt)
+- [sitemap.xml](/Users/jay/Downloads/Resume builder/sitemap.xml)
 
 ## Local Development
 

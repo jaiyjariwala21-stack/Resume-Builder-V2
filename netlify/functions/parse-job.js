@@ -18,6 +18,27 @@ function sanitize(input) {
   return String(input || "").replace(/\u0000/g, "").trim();
 }
 
+function getProviderKey(provider, apiKey) {
+  const directKey = sanitize(apiKey);
+  if (directKey) {
+    return directKey;
+  }
+
+  if (provider === "openai") {
+    return sanitize(process.env.OPENAI_API_KEY);
+  }
+
+  if (provider === "anthropic") {
+    return sanitize(process.env.ANTHROPIC_API_KEY);
+  }
+
+  if (provider === "google") {
+    return sanitize(process.env.GOOGLE_API_KEY);
+  }
+
+  return "";
+}
+
 function buildPrompt(jobText) {
   return [
     "Extract structured hiring data from the job description.",
@@ -130,10 +151,10 @@ export async function handler(event) {
     const { jobText, provider, apiKey } = JSON.parse(event.body || "{}");
     const safeJobText = sanitize(jobText).slice(0, 16000);
     const safeProvider = sanitize(provider).toLowerCase();
-    const safeApiKey = sanitize(apiKey);
+    const safeApiKey = getProviderKey(safeProvider, apiKey);
 
     if (!safeJobText || !safeProvider || !safeApiKey) {
-      return json(400, { error: "jobText, provider, and apiKey are required." });
+      return json(400, { error: "jobText and provider are required, plus either an apiKey or a configured server-side provider key." });
     }
 
     const prompt = buildPrompt(safeJobText);

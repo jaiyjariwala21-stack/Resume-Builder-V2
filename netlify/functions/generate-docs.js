@@ -18,12 +18,34 @@ function sanitize(input) {
   return String(input || "").replace(/\u0000/g, "").trim();
 }
 
+function getProviderKey(provider, apiKey) {
+  const directKey = sanitize(apiKey);
+  if (directKey) {
+    return directKey;
+  }
+
+  if (provider === "openai") {
+    return sanitize(process.env.OPENAI_API_KEY);
+  }
+
+  if (provider === "anthropic") {
+    return sanitize(process.env.ANTHROPIC_API_KEY);
+  }
+
+  if (provider === "google") {
+    return sanitize(process.env.GOOGLE_API_KEY);
+  }
+
+  return "";
+}
+
 function buildPrompt({ resume, job, parsedJob, matchResult }) {
   return [
-    "You are an expert resume editor and cover letter writer.",
+    "You are an expert ATS resume editor and cover letter writer.",
     "Use ONLY the facts already present in the resume.",
     "Do not fabricate achievements, metrics, employers, dates, or responsibilities.",
     "You may rephrase, reorganize, condense, and emphasize relevant existing experience.",
+    "Optimize for ATS readability and keyword alignment without keyword stuffing.",
     "Return JSON only with this exact shape:",
     '{"resume":"","coverLetter":""}',
     "",
@@ -40,8 +62,11 @@ function buildPrompt({ resume, job, parsedJob, matchResult }) {
     job,
     "",
     "Output requirements:",
-    "- Resume should stay ATS-friendly with plain text section headings and bullets.",
-    "- Cover letter should be concise, factual, and aligned to the job.",
+    "- Resume should stay ATS-friendly with plain text section headings like SUMMARY, EXPERIENCE, SKILLS, and EDUCATION.",
+    "- Resume should avoid tables, columns, icons, text boxes, and decorative formatting.",
+    "- Resume should naturally include relevant job keywords only when supported by the existing resume facts.",
+    "- Resume bullets should begin with strong verbs and remain plain-text friendly.",
+    "- Cover letter should be concise, factual, aligned to the job, and easy to scan.",
     "- Keep a professional tone and preserve honesty constraints.",
   ].join("\n");
 }
@@ -144,10 +169,10 @@ export async function handler(event) {
     const safeResume = sanitize(resume).slice(0, 24000);
     const safeJob = sanitize(job).slice(0, 16000);
     const safeProvider = sanitize(provider).toLowerCase();
-    const safeApiKey = sanitize(apiKey);
+    const safeApiKey = getProviderKey(safeProvider, apiKey);
 
     if (!safeResume || !safeJob || !safeProvider || !safeApiKey) {
-      return json(400, { error: "resume, job, provider, and apiKey are required." });
+      return json(400, { error: "resume and job are required, plus either an apiKey or a configured server-side provider key." });
     }
 
     const prompt = buildPrompt({

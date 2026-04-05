@@ -3,6 +3,23 @@ const state = {
   matchResult: null,
 };
 
+const STOP_WORDS = new Set([
+  "about", "after", "also", "been", "being", "build", "built", "company", "could", "data",
+  "from", "into", "more", "must", "need", "role", "team", "their", "them", "they", "with",
+  "work", "your", "years", "will", "have", "this", "that", "than", "such", "able", "using",
+  "our", "you", "are", "the", "for", "and", "not", "all", "who", "how", "what", "where",
+]);
+
+const PHRASE_EXCLUSIONS = new Set([
+  "about the role",
+  "responsibilities",
+  "required skills",
+  "preferred skills",
+  "what you ll do",
+  "what you'll do",
+  "qualifications",
+]);
+
 const SAMPLE_DATA = {
   jobUrl: "https://example.com/jobs/senior-product-manager",
   jobDescription: `Senior Product Manager
@@ -168,7 +185,7 @@ function wordsFromText(text) {
     .toLowerCase()
     .replace(/[^a-z0-9+#./ -]/g, " ")
     .split(/\s+/)
-    .filter((word) => word.length > 2);
+    .filter((word) => word.length > 2 && !STOP_WORDS.has(word));
 }
 
 function uniqueTerms(items) {
@@ -176,17 +193,8 @@ function uniqueTerms(items) {
 }
 
 function extractKeywords(text) {
-  const stopWords = new Set([
-    "about", "after", "also", "been", "being", "build", "built", "company", "data", "from",
-    "into", "more", "must", "need", "role", "team", "their", "them", "they", "with", "work",
-    "your", "years", "will", "have", "this", "that", "than", "such", "able", "using",
-  ]);
-
   const frequency = new Map();
   wordsFromText(text).forEach((word) => {
-    if (stopWords.has(word)) {
-      return;
-    }
     frequency.set(word, (frequency.get(word) || 0) + 1);
   });
 
@@ -196,11 +204,52 @@ function extractKeywords(text) {
     .map(([word]) => word);
 }
 
+function extractKeywordPhrases(text) {
+  const lines = sanitizeText(text).split("\n");
+  const phrases = [];
+
+  lines.forEach((line) => {
+    const cleaned = line
+      .replace(/^[-*]\s*/, "")
+      .replace(/[^a-zA-Z0-9+#/,& -]/g, " ")
+      .trim();
+
+    if (!cleaned || cleaned.length < 4) {
+      return;
+    }
+
+    const normalizedPhrase = cleaned
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (PHRASE_EXCLUSIONS.has(normalizedPhrase)) {
+      return;
+    }
+
+    if (normalizedPhrase.length <= 48 && normalizedPhrase.split(/\s+/).length <= 5) {
+      phrases.push(normalizedPhrase);
+    }
+  });
+
+  return uniqueTerms(phrases);
+}
+
+function keywordCovered(keyword, normalizedResumeText, resumeWords) {
+  if (normalizedResumeText.includes(keyword)) {
+    return true;
+  }
+
+  return keyword.split(" ").every((part) => resumeWords.has(part));
+}
+
 function computeMatchScore(resumeText, parsedJob) {
+  const normalizedResumeText = sanitizeText(resumeText).toLowerCase();
   const resumeWords = new Set(wordsFromText(resumeText));
   const jobKeywords = uniqueTerms([
     ...(parsedJob.skills || []),
     ...(parsedJob.keywords || []),
+    ...extractKeywordPhrases(sanitizeText(elements.jobDescription.value)),
     ...extractKeywords(
       [
         parsedJob.title,
@@ -209,17 +258,20 @@ function computeMatchScore(resumeText, parsedJob) {
         sanitizeText(elements.jobDescription.value),
       ].join(" "),
     ),
-  ]);
+  ]).filter((keyword) => keyword.length > 2 && !STOP_WORDS.has(keyword));
 
-  const overlapping = jobKeywords.filter((keyword) => keyword.split(" ").some((part) => resumeWords.has(part)));
+  const overlapping = jobKeywords.filter((keyword) => keywordCovered(keyword, normalizedResumeText, resumeWords));
   const missing = jobKeywords.filter((keyword) => !overlapping.includes(keyword));
-  const scoreBase = jobKeywords.length ? (overlapping.length / jobKeywords.length) * 100 : 0;
-  const score = Math.max(12, Math.min(100, Math.round(scoreBase)));
+  const mustHaveTerms = uniqueTerms([...(parsedJob.skills || []), ...extractKeywordPhrases(sanitizeText(elements.jobDescription.value)).slice(0, 8)]);
+  const mustHaveHits = mustHaveTerms.filter((keyword) => keywordCovered(keyword, normalizedResumeText, resumeWords));
+  const coverageScore = jobKeywords.length ? (overlapping.length / jobKeywords.length) * 100 : 0;
+  const mustHaveScore = mustHaveTerms.length ? (mustHaveHits.length / mustHaveTerms.length) * 100 : 0;
+  const score = Math.max(18, Math.min(100, Math.round((coverageScore * 0.65) + (mustHaveScore * 0.35))));
 
   const suggestions = [
-    missing.length ? `Add evidence for: ${missing.slice(0, 5).join(", ")}.` : "Your resume covers most target terms.",
-    "Move the most relevant skills and role-specific achievements closer to the top.",
-    "Keep wording factual: rephrase and prioritize, but do not invent experience or metrics.",
+    missing.length ? `Add or surface evidence for: ${missing.slice(0, 5).join(", ")}.` : "Your resume already reflects most high-value target terms.",
+    "Keep standard ATS headings like SUMMARY, EXPERIENCE, SKILLS, and EDUCATION.",
+    "Mirror the employer's language where truthful, and place the strongest role-relevant bullets near the top.",
   ];
 
   return {
@@ -227,6 +279,7 @@ function computeMatchScore(resumeText, parsedJob) {
     overlapping,
     missing,
     suggestions,
+    mustHaveHits,
   };
 }
 
@@ -456,8 +509,8 @@ async function handleGenerate() {
   const provider = elements.provider.value;
   const apiKey = sanitizeText(elements.apiKey.value);
 
-  if (!resume || !jobText || !apiKey) {
-    setStatus("Resume, job description, and API key are all required for document generation.");
+  if (!resume || !jobText) {
+    setStatus("Resume and job description are required. API key can be blank only if server-side provider keys are configured.");
     return;
   }
 
