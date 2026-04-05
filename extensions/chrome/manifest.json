@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Job Machine Capture",
+  "version": "0.1.0",
+  "description": "Capture a job posting, reuse your default resume, and open Job Machine ready to generate.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>", "https://resume-builder-v2-jaiyjariwala21.netlify.app/*"],
+  "action": {
+    "default_title": "Job Machine",
+    "default_popup": "popup.html"
+  }
+}

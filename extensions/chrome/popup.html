@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Job Machine Capture</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <h1>Job Machine</h1>
+      <p class="copy">Capture the current job page and open the app ready to tailor your resume.</p>
+
+      <label class="field">
+        <span>Billing email</span>
+        <input id="billingEmail" type="email" placeholder="you@example.com" />
+      </label>
+
+      <label class="field">
+        <span>Provider</span>
+        <select id="provider">
+          <option value="google">Google Gemini</option>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Default resume</span>
+        <textarea id="defaultResume" rows="8" placeholder="Paste the resume you want the extension to reuse."></textarea>
+      </label>
+
+      <div class="actions">
+        <button id="saveResumeBtn" type="button">Save default resume</button>
+        <button id="openGeneratorBtn" type="button" class="secondary">Capture and open</button>
+        <button id="autoGenerateBtn" type="button">Capture and autogenerate</button>
+      </div>
+
+      <p id="status" class="status">Ready.</p>
+    </main>
+    <script src="./popup.js"></script>
+  </body>
+</html>

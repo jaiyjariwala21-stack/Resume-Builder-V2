@@ -115,6 +115,17 @@ Users can optionally create an account with Firebase Auth. When signed in, they 
 
 Guest mode remains available, and paid generation continues to rely on server-side billing checks plus provider secrets stored in Netlify environment variables.
 
+### Browser extension flow
+
+The project also includes a Chrome extension MVP that can:
+
+- capture the current job page
+- reuse a saved default resume from the extension popup
+- open Job Machine with the job prefilled
+- optionally trigger generation immediately after the app opens
+
+The extension stays intentionally thin. It does not store provider secrets or billing logic. Instead, it hands the captured job to the main web app, which continues to enforce Stripe access and server-side provider key usage.
+
 ## Tech Stack
 
 ### Frontend
@@ -152,8 +163,15 @@ Guest mode remains available, and paid generation continues to rely on server-si
 ├── robots.txt
 ├── sitemap.xml
 ├── docs
+│   ├── browser-extensions.md
 │   ├── firebase-firestore-setup.md
 │   └── monetization-plan.md
+├── extensions
+│   └── chrome
+│       ├── manifest.json
+│       ├── popup.css
+│       ├── popup.html
+│       └── popup.js
 ├── scripts
 │   └── run-ats-samples.js
 └── netlify

@@ -8,6 +8,9 @@ const FIREBASE_WEB_CONFIG = {
   measurementId: "G-V2NGRRMV8K",
 };
 
+const WORKSPACE_STORAGE_KEY = "job-machine-workspace-v1";
+const DEFAULT_RESUME_STORAGE_KEY = "job-machine-default-resume-v1";
+
 const state = {
   parsedJob: null,
   matchResult: null,
@@ -120,6 +123,8 @@ const elements = {
   accountStatus: document.getElementById("accountStatus"),
   savedResumes: document.getElementById("savedResumes"),
   billingHistory: document.getElementById("billingHistory"),
+  saveDefaultResumeBtn: document.getElementById("saveDefaultResumeBtn"),
+  useDefaultResumeBtn: document.getElementById("useDefaultResumeBtn"),
   analyzeBtn: document.getElementById("analyzeBtn"),
   generateBtn: document.getElementById("generateBtn"),
   matchScore: document.getElementById("matchScore"),
@@ -146,6 +151,8 @@ elements.clearAllBtn.addEventListener("click", clearAllFields);
 elements.resumeFile.addEventListener("change", handleResumeUpload);
 elements.resumeText.addEventListener("input", () => populateStructuredFields(elements.resumeText.value));
 elements.syncResumeBtn.addEventListener("click", syncStructuredFieldsIntoResume);
+elements.saveDefaultResumeBtn.addEventListener("click", saveDefaultResume);
+elements.useDefaultResumeBtn.addEventListener("click", loadDefaultResumeIntoEditor);
 elements.analyzeBtn.addEventListener("click", handleAnalyze);
 elements.generateBtn.addEventListener("click", handleGenerate);
 elements.buySingleBtn.addEventListener("click", () => startCheckout("single"));
@@ -160,10 +167,27 @@ elements.saveOutputBtn.addEventListener("click", () => saveWorkspaceRecord("draf
 elements.downloadResumeBtn.addEventListener("click", () => exportPdf("resume"));
 elements.downloadCoverBtn.addEventListener("click", () => exportPdf("cover"));
 elements.tabs.forEach((tab) => tab.addEventListener("click", () => setActiveTab(tab.dataset.tab)));
+[
+  elements.jobUrl,
+  elements.jobDescription,
+  elements.resumeText,
+  elements.summaryField,
+  elements.experienceField,
+  elements.skillsField,
+  elements.educationField,
+  elements.provider,
+  elements.billingEmail,
+  elements.resumeOutput,
+  elements.coverLetterOutput,
+].forEach((element) => {
+  element.addEventListener("input", persistWorkspaceSnapshot);
+  element.addEventListener("change", persistWorkspaceSnapshot);
+});
 
 renderSavedRecords();
 renderBillingHistory();
 renderAccountState();
+restoreWorkspaceSnapshot();
 bootstrapBillingState();
 initOptionalAccount();
 
@@ -176,9 +200,11 @@ function setAccountStatus(message) {
 }
 
 async function bootstrapBillingState() {
+  restoreExtensionPrefill();
   const params = new URLSearchParams(window.location.search);
   const checkoutStatus = params.get("checkout");
   const sessionId = params.get("session_id");
+  const autoGenerate = params.get("autogen");
 
   if (checkoutStatus === "success" && sessionId) {
     await finalizeCheckout(sessionId);
@@ -192,6 +218,13 @@ async function bootstrapBillingState() {
   }
 
   await loadAccessStatus();
+
+  if (autoGenerate === "1" && sanitizeText(elements.resumeText.value) && sanitizeText(elements.jobDescription.value)) {
+    await handleGenerate();
+    params.delete("autogen");
+    const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+    window.history.replaceState({}, "", nextUrl);
+  }
 }
 
 async function initOptionalAccount() {
@@ -288,6 +321,145 @@ function renderAccountState() {
       ? "Guest mode active. Sign in only if you want saved history."
       : "Loading optional account tools...",
   );
+}
+
+function getWorkspaceSnapshot() {
+  return {
+    jobUrl: elements.jobUrl.value,
+    jobDescription: elements.jobDescription.value,
+    resumeText: elements.resumeText.value,
+    summary: elements.summaryField.value,
+    experience: elements.experienceField.value,
+    skills: elements.skillsField.value,
+    education: elements.educationField.value,
+    provider: elements.provider.value,
+    billingEmail: elements.billingEmail.value,
+    resumeOutput: elements.resumeOutput.value,
+    coverLetterOutput: elements.coverLetterOutput.value,
+  };
+}
+
+function persistWorkspaceSnapshot() {
+  try {
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(getWorkspaceSnapshot()));
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function restoreWorkspaceSnapshot() {
+  try {
+    const raw = localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    if (!raw) {
+      return;
+    }
+    const snapshot = JSON.parse(raw);
+    applyWorkspaceSnapshot(snapshot, false);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function applyWorkspaceSnapshot(snapshot, announce = true) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return;
+  }
+
+  if (typeof snapshot.jobUrl === "string") elements.jobUrl.value = snapshot.jobUrl;
+  if (typeof snapshot.jobDescription === "string") elements.jobDescription.value = snapshot.jobDescription;
+  if (typeof snapshot.resumeText === "string") elements.resumeText.value = snapshot.resumeText;
+  if (typeof snapshot.summary === "string") elements.summaryField.value = snapshot.summary;
+  if (typeof snapshot.experience === "string") elements.experienceField.value = snapshot.experience;
+  if (typeof snapshot.skills === "string") elements.skillsField.value = snapshot.skills;
+  if (typeof snapshot.education === "string") elements.educationField.value = snapshot.education;
+  if (typeof snapshot.provider === "string") elements.provider.value = snapshot.provider;
+  if (typeof snapshot.billingEmail === "string") elements.billingEmail.value = snapshot.billingEmail;
+  if (typeof snapshot.resumeOutput === "string") elements.resumeOutput.value = snapshot.resumeOutput;
+  if (typeof snapshot.coverLetterOutput === "string") elements.coverLetterOutput.value = snapshot.coverLetterOutput;
+
+  if (!elements.summaryField.value && elements.resumeText.value) {
+    populateStructuredFields(elements.resumeText.value);
+  }
+
+  persistWorkspaceSnapshot();
+  if (announce) {
+    setStatus("Workspace restored.");
+  }
+}
+
+function saveDefaultResume() {
+  const resumeText = sanitizeText(elements.resumeText.value);
+  if (!resumeText) {
+    setStatus("Add resume text before saving a default resume.");
+    return;
+  }
+
+  const payload = {
+    resumeText,
+    summary: elements.summaryField.value,
+    experience: elements.experienceField.value,
+    skills: elements.skillsField.value,
+    education: elements.educationField.value,
+    savedAt: new Date().toISOString(),
+  };
+
+  localStorage.setItem(DEFAULT_RESUME_STORAGE_KEY, JSON.stringify(payload));
+  persistWorkspaceSnapshot();
+  setStatus("Default resume saved for quick reuse.");
+}
+
+function loadDefaultResumeIntoEditor() {
+  try {
+    const raw = localStorage.getItem(DEFAULT_RESUME_STORAGE_KEY);
+    if (!raw) {
+      setStatus("No default resume saved yet.");
+      return;
+    }
+    const payload = JSON.parse(raw);
+    applyWorkspaceSnapshot(payload, false);
+    setStatus("Default resume loaded.");
+  } catch (error) {
+    console.error(error);
+    setStatus("Could not load the default resume.");
+  }
+}
+
+function restoreExtensionPrefill() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const encodedPayload = params.get("payload");
+    if (!encodedPayload) {
+      return;
+    }
+
+    const payload = JSON.parse(decodeURIComponent(encodedPayload));
+    const defaultResumeRaw = localStorage.getItem(DEFAULT_RESUME_STORAGE_KEY);
+    const defaultResume = defaultResumeRaw ? JSON.parse(defaultResumeRaw) : null;
+
+    applyWorkspaceSnapshot({
+      jobUrl: payload.jobUrl || payload.sourceUrl || "",
+      jobDescription: payload.jobDescription || payload.pageText || "",
+      provider: payload.provider || elements.provider.value,
+      billingEmail: payload.billingEmail || elements.billingEmail.value,
+      resumeText: payload.resumeText || defaultResume?.resumeText || elements.resumeText.value,
+      summary: defaultResume?.summary || elements.summaryField.value,
+      experience: defaultResume?.experience || elements.experienceField.value,
+      skills: defaultResume?.skills || elements.skillsField.value,
+      education: defaultResume?.education || elements.educationField.value,
+    }, false);
+
+    if (payload.jobDescription || payload.pageText) {
+      state.parsedJob = buildLocalJobSummary(payload.jobDescription || payload.pageText || "");
+      renderJobMeta(state.parsedJob, true);
+    }
+
+    params.delete("payload");
+    const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+    window.history.replaceState({}, "", nextUrl);
+    setStatus("Job details imported from the browser extension.");
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 function sanitizeText(input) {
@@ -603,6 +775,7 @@ function loadSavedRecordIntoEditor(record) {
 
   state.parsedJob = null;
   state.matchResult = null;
+  persistWorkspaceSnapshot();
   setStatus(`Loaded "${record.title || "saved record"}" into the editor.`);
 }
 
@@ -767,6 +940,7 @@ function loadSampleData() {
     ],
   });
   setStatus("Sample resume and job description loaded.");
+  persistWorkspaceSnapshot();
 }
 
 function clearAllFields() {
@@ -797,6 +971,7 @@ function clearAllFields() {
     ],
   });
   setStatus("Cleared all fields.");
+  persistWorkspaceSnapshot();
 }
 
 function wordsFromText(text) {
@@ -989,6 +1164,7 @@ async function handleResumeUpload(event) {
     elements.resumeText.value = sanitizeText(text);
     populateStructuredFields(elements.resumeText.value);
     setStatus(`Loaded ${file.name}. You can edit the sections inline now.`);
+    persistWorkspaceSnapshot();
   } catch (error) {
     console.error(error);
     setStatus("Could not parse that file. Paste the resume text manually and try again.");
@@ -1040,6 +1216,7 @@ async function handleScrapeJob() {
     elements.jobDescription.value = payload.text || "";
     setStatus("Job description fetched. You can review or edit it before analysis.");
     await ensureParsedJob();
+    persistWorkspaceSnapshot();
   } catch (error) {
     console.error(error);
     setStatus("Scrape blocked or unavailable. Paste the job description manually to continue.");
@@ -1165,6 +1342,7 @@ async function handleGenerate() {
     elements.coverLetterOutput.value = payload.coverLetter || "";
     setActiveTab("resumeOutput");
     setStatus("Documents generated. Review and edit before exporting.");
+    persistWorkspaceSnapshot();
   } catch (error) {
     console.error(error);
     setStatus(error.message || "Document generation failed.");
