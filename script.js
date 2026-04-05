@@ -1,6 +1,7 @@
 const state = {
   parsedJob: null,
   matchResult: null,
+  accessStatus: null,
 };
 
 const STOP_WORDS = new Set([
@@ -86,6 +87,12 @@ const elements = {
   syncResumeBtn: document.getElementById("syncResumeBtn"),
   provider: document.getElementById("provider"),
   apiKey: document.getElementById("apiKey"),
+  billingEmail: document.getElementById("billingEmail"),
+  buySingleBtn: document.getElementById("buySingleBtn"),
+  buyMonthlyBtn: document.getElementById("buyMonthlyBtn"),
+  refreshAccessBtn: document.getElementById("refreshAccessBtn"),
+  manageBillingBtn: document.getElementById("manageBillingBtn"),
+  accessStatus: document.getElementById("accessStatus"),
   analyzeBtn: document.getElementById("analyzeBtn"),
   generateBtn: document.getElementById("generateBtn"),
   matchScore: document.getElementById("matchScore"),
@@ -114,12 +121,127 @@ elements.resumeText.addEventListener("input", () => populateStructuredFields(ele
 elements.syncResumeBtn.addEventListener("click", syncStructuredFieldsIntoResume);
 elements.analyzeBtn.addEventListener("click", handleAnalyze);
 elements.generateBtn.addEventListener("click", handleGenerate);
+elements.buySingleBtn.addEventListener("click", () => startCheckout("single"));
+elements.buyMonthlyBtn.addEventListener("click", () => startCheckout("subscription"));
+elements.refreshAccessBtn.addEventListener("click", loadAccessStatus);
+elements.manageBillingBtn.addEventListener("click", openBillingPortal);
 elements.downloadResumeBtn.addEventListener("click", () => exportPdf("resume"));
 elements.downloadCoverBtn.addEventListener("click", () => exportPdf("cover"));
 elements.tabs.forEach((tab) => tab.addEventListener("click", () => setActiveTab(tab.dataset.tab)));
+bootstrapBillingState();
 
 function setStatus(message) {
   elements.statusMessage.textContent = message;
+}
+
+async function bootstrapBillingState() {
+  const params = new URLSearchParams(window.location.search);
+  const checkoutStatus = params.get("checkout");
+  const sessionId = params.get("session_id");
+
+  if (checkoutStatus === "success" && sessionId) {
+    await finalizeCheckout(sessionId);
+    params.delete("checkout");
+    params.delete("session_id");
+    params.delete("billing");
+    const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+    window.history.replaceState({}, "", nextUrl);
+  } else if (checkoutStatus === "cancelled") {
+    setStatus("Checkout was cancelled. You can try again anytime.");
+  }
+
+  await loadAccessStatus();
+}
+
+async function finalizeCheckout(sessionId) {
+  try {
+    setStatus("Finalizing your paid access...");
+    const response = await fetch("/.netlify/functions/finalize-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to finalize checkout.");
+    }
+    setStatus(payload.message || "Paid access activated.");
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "Unable to finalize checkout.");
+  }
+}
+
+async function loadAccessStatus() {
+  try {
+    const response = await fetch("/.netlify/functions/access-status");
+    const payload = await response.json();
+    state.accessStatus = payload;
+    renderAccessStatus(payload);
+  } catch (error) {
+    console.error(error);
+    elements.accessStatus.textContent = "Could not load billing access status.";
+  }
+}
+
+function renderAccessStatus(payload) {
+  if (!payload?.authenticated) {
+    elements.accessStatus.textContent = payload?.billingConfigured
+      ? "No paid session detected yet. Buy a credit or subscription to use server-side billing."
+      : "Billing storage is not configured yet. For now, use your own API key.";
+    return;
+  }
+
+  const profile = payload.profile || {};
+  elements.accessStatus.textContent = `Signed in as ${payload.email}. ${payload.reason || ""} Credits: ${profile.resumeCredits ?? 0}. Subscription: ${profile.hasActiveSubscription ? "active" : (profile.subscriptionStatus || "inactive")}.`;
+}
+
+async function startCheckout(mode) {
+  const customerEmail = sanitizeText(elements.billingEmail.value);
+  if (!customerEmail) {
+    setStatus("Enter your billing email before starting checkout.");
+    return;
+  }
+
+  toggleBillingBusy(true);
+  setStatus(mode === "subscription" ? "Creating monthly checkout..." : "Creating one-time checkout...");
+
+  try {
+    const response = await fetch("/.netlify/functions/create-checkout-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, customerEmail }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to create checkout session.");
+    }
+    window.location.href = payload.url;
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "Unable to start checkout.");
+    toggleBillingBusy(false);
+  }
+}
+
+async function openBillingPortal() {
+  toggleBillingBusy(true);
+  setStatus("Opening billing portal...");
+
+  try {
+    const response = await fetch("/.netlify/functions/create-customer-portal", {
+      method: "POST",
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to open billing portal.");
+    }
+    window.location.href = payload.url;
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "Unable to open billing portal.");
+    toggleBillingBusy(false);
+  }
 }
 
 function sanitizeText(input) {
@@ -591,6 +713,12 @@ function exportPdf(kind) {
 
 function toggleBusy(isBusy) {
   [elements.scrapeJobBtn, elements.analyzeBtn, elements.generateBtn].forEach((button) => {
+    button.disabled = isBusy;
+  });
+}
+
+function toggleBillingBusy(isBusy) {
+  [elements.buySingleBtn, elements.buyMonthlyBtn, elements.refreshAccessBtn, elements.manageBillingBtn].forEach((button) => {
     button.disabled = isBusy;
   });
 }

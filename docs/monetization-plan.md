@@ -53,7 +53,7 @@ For a simple V1, use:
 - Stripe Checkout
 - one monthly subscription
 - one pay-per-resume option
-- Supabase or Neon for customer and entitlement records
+- Firestore for customer and entitlement records
 - Netlify environment variables for provider keys
 
 ## What is already in this repo
@@ -61,6 +61,8 @@ For a simple V1, use:
 - `generate-docs.js` now supports server-side provider keys.
 - `parse-job.js` now supports server-side provider keys.
 - `create-checkout-session.js` scaffolds Stripe Checkout session creation.
+- `stripe-webhook.js` syncs Stripe events into Firestore-backed billing state.
+- `access-status.js` and `finalize-access.js` support paid-session access.
 
 ## What is still needed before charging real customers
 
@@ -69,3 +71,13 @@ For a simple V1, use:
 - persistent entitlement storage
 - success-page verification
 - generate request gating based on paid status
+
+## Firebase free-tier note
+
+This repo now targets a Firebase-free-tier-friendly shape:
+
+- Firestore stores billing entitlements
+- Netlify Functions handle Stripe and generation logic
+- owner-managed model keys stay server-side
+
+That means you do not need Firebase Functions for the MVP.

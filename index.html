@@ -174,9 +174,29 @@
           </div>
         </section>
 
+        <section class="panel">
+          <div class="panel-header">
+            <h2>4. Billing Access</h2>
+            <p>Use Stripe checkout for pay-per-resume or monthly access. Server-side provider keys stay hidden.</p>
+          </div>
+          <label class="field">
+            <span>Billing Email</span>
+            <input id="billingEmail" type="email" placeholder="you@example.com" />
+          </label>
+          <div class="action-row">
+            <button id="buySingleBtn" class="secondary-button" type="button">Buy 1 Resume</button>
+            <button id="buyMonthlyBtn" class="primary-button" type="button">Start Monthly Plan</button>
+          </div>
+          <div class="action-row">
+            <button id="refreshAccessBtn" class="ghost-button" type="button">Refresh access</button>
+            <button id="manageBillingBtn" class="ghost-button" type="button">Manage billing</button>
+          </div>
+          <div id="accessStatus" class="meta-box muted">No paid session detected yet.</div>
+        </section>
+
         <section class="panel score-panel">
           <div class="panel-header">
-            <h2>4. Match Score Panel</h2>
+            <h2>5. Match Score Panel</h2>
             <p>Keyword overlap, missing terms, and quick ATS guidance.</p>
           </div>
           <div class="score-card">
@@ -205,7 +225,7 @@
 
         <section class="panel output-panel">
           <div class="panel-header">
-            <h2>5. Output</h2>
+            <h2>6. Output</h2>
             <p>Review, edit, and export your tailored resume or cover letter.</p>
           </div>
           <div class="tabs" role="tablist" aria-label="Generated outputs">

@@ -1,22 +1,4 @@
-const DEFAULT_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Content-Type": "application/json",
-  "Cache-Control": "no-store",
-};
-
-function json(statusCode, body) {
-  return {
-    statusCode,
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify(body),
-  };
-}
-
-function sanitize(input) {
-  return String(input || "").replace(/\u0000/g, "").trim();
-}
+import { DEFAULT_HEADERS, json, parseJsonBody, sanitize } from "./lib/http.js";
 
 function getProviderKey(provider, apiKey) {
   const directKey = sanitize(apiKey);
@@ -148,7 +130,7 @@ export async function handler(event) {
   }
 
   try {
-    const { jobText, provider, apiKey } = JSON.parse(event.body || "{}");
+    const { jobText, provider, apiKey } = parseJsonBody(event.body);
     const safeJobText = sanitize(jobText).slice(0, 16000);
     const safeProvider = sanitize(provider).toLowerCase();
     const safeApiKey = getProviderKey(safeProvider, apiKey);

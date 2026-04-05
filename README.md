@@ -141,15 +141,21 @@ Export is handled in the browser using `jsPDF`.
 ├── robots.txt
 ├── sitemap.xml
 ├── docs
+│   ├── firebase-firestore-setup.md
 │   └── monetization-plan.md
 ├── scripts
 │   └── run-ats-samples.js
 └── netlify
     └── functions
+        ├── access-status.js
         ├── create-checkout-session.js
+        ├── create-customer-portal.js
+        ├── finalize-access.js
         ├── generate-docs.js
         ├── parse-job.js
-        └── scrape-job.js
+        ├── scrape-job.js
+        ├── stripe-webhook.js
+        └── lib
 ```
 
 ## File-by-File Overview
@@ -268,7 +274,7 @@ Provides a starter Stripe Checkout session endpoint for:
 - one-time pay-per-resume purchases
 - monthly subscriptions
 
-This is a scaffold, not a complete production billing system. Real monetization still requires persistent entitlement storage and webhook handling.
+This is now part of a fuller paid-access foundation and is meant to work with Stripe plus Firestore-backed entitlements.
 
 ### `.env.example`
 
@@ -276,6 +282,8 @@ Documents the environment variables needed for:
 
 - provider API keys
 - Stripe billing
+- signed app sessions
+- Firebase Firestore service-account access
 - production app URL
 
 ### `robots.txt` and `sitemap.xml`
@@ -285,6 +293,10 @@ Provide the baseline files needed for search engine discovery and indexing.
 ### `docs/monetization-plan.md`
 
 Explains the recommended architecture for using your own API keys safely and monetizing the app with a real billing stack.
+
+### `docs/firebase-firestore-setup.md`
+
+Documents the Firestore collection shape and environment variables for a Firebase-free-tier-friendly billing backend.
 
 ### `scripts/run-ats-samples.js`
 
@@ -437,16 +449,20 @@ You can configure these variables:
 
 ```bash
 STRIPE_SECRET_KEY=...
+STRIPE_WEBHOOK_SECRET=...
 STRIPE_PRICE_ID_SINGLE_RESUME=...
 STRIPE_PRICE_ID_MONTHLY=...
+APP_SESSION_SECRET=...
+FIREBASE_PROJECT_ID=...
+FIREBASE_CLIENT_EMAIL=...
+FIREBASE_PRIVATE_KEY=...
 APP_URL=https://your-production-domain.com
 ```
 
 ### Important limitation
 
-This starter billing flow is not enough by itself to enforce paid access securely at scale. Before charging real customers, you should add:
+This starter billing flow now includes Stripe checkout, signed paid-session cookies, webhook handling, and Firestore-backed entitlement checks. Before charging real customers at scale, you should still add:
 
-- user accounts or magic-link login
 - webhook processing
 - persistent entitlement storage
 - request gating based on credits or subscription state

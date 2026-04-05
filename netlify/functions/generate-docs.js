@@ -1,22 +1,6 @@
-const DEFAULT_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Content-Type": "application/json",
-  "Cache-Control": "no-store",
-};
-
-function json(statusCode, body) {
-  return {
-    statusCode,
-    headers: DEFAULT_HEADERS,
-    body: JSON.stringify(body),
-  };
-}
-
-function sanitize(input) {
-  return String(input || "").replace(/\u0000/g, "").trim();
-}
+import { DEFAULT_HEADERS, json, parseCookies, parseJsonBody, sanitize } from "./lib/http.js";
+import { getSessionCookieName, verifySignedSession } from "./lib/app-session.js";
+import { consumeResumeCredit, canGenerateWithEntitlement, isFirestoreConfigured } from "./lib/firebase-firestore.js";
 
 function getProviderKey(provider, apiKey) {
   const directKey = sanitize(apiKey);
@@ -165,14 +149,36 @@ export async function handler(event) {
   }
 
   try {
-    const { resume, job, provider, apiKey, parsedJob, matchResult } = JSON.parse(event.body || "{}");
+    const { resume, job, provider, apiKey, parsedJob, matchResult } = parseJsonBody(event.body);
     const safeResume = sanitize(resume).slice(0, 24000);
     const safeJob = sanitize(job).slice(0, 16000);
     const safeProvider = sanitize(provider).toLowerCase();
     const safeApiKey = getProviderKey(safeProvider, apiKey);
 
-    if (!safeResume || !safeJob || !safeProvider || !safeApiKey) {
-      return json(400, { error: "resume and job are required, plus either an apiKey or a configured server-side provider key." });
+    if (!safeResume || !safeJob || !safeProvider) {
+      return json(400, { error: "resume, job, and provider are required." });
+    }
+
+    if (!safeApiKey) {
+      return json(400, { error: "No provider key is configured for the selected model." });
+    }
+
+    const cookies = parseCookies(event.headers.cookie || event.headers.Cookie);
+    const session = verifySignedSession(cookies[getSessionCookieName()]);
+    const usingOwnerManagedKey = !sanitize(apiKey);
+
+    if (usingOwnerManagedKey) {
+      if (!session?.email) {
+        return json(401, { error: "A paid session is required to use site billing." });
+      }
+
+      if (isFirestoreConfigured()) {
+        const entitlement = await canGenerateWithEntitlement(session.email);
+        if (!entitlement.allowed) {
+          return json(402, { error: entitlement.reason || "No paid entitlement found." });
+        }
+        await consumeResumeCredit(session.email);
+      }
     }
 
     const prompt = buildPrompt({
