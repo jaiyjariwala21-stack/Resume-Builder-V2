@@ -12,7 +12,7 @@ export async function handler(event) {
 
   try {
     const appUrl = sanitize(process.env.APP_URL) || "http://localhost:8888";
-    const singlePriceId = sanitize(process.env.STRIPE_PRICE_ID_SINGLE_RESUME);
+    const singlePriceId = sanitize(process.env.STRIPE_PRICE_ID_SINGLE_RESUME_2);
     const monthlyPriceId = sanitize(process.env.STRIPE_PRICE_ID_MONTHLY);
     const { mode, customerEmail } = parseJsonBody(event.body);
     const normalizedMode = sanitize(mode || "single");

@@ -9,6 +9,7 @@
     "deploy:prod": "netlify deploy --prod"
   },
   "devDependencies": {
-    "netlify-cli": "^22.2.0"
+    "netlify-cli": "^22.2.0",
+    "playwright": "^1.59.1"
   }
 }
